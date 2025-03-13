@@ -1,0 +1,24 @@
+{
+  "tasks": {
+    "start": "deno run --allow-read --allow-write convert.ts",
+    "dev": "deno run --watch --allow-read --allow-write convert.ts",
+    "test": "deno test --allow-read"
+  },
+  "fmt": {
+    "files": {
+      "include": ["**/*.ts"]
+    },
+    "options": {
+      "useTabs": false,
+      "lineWidth": 100,
+      "indentWidth": 2,
+      "singleQuote": true,
+      "proseWrap": "preserve"
+    }
+  },
+  "compilerOptions": {
+    "strict": true,
+    "allowJs": false,
+    "lib": ["deno.window"]
+  }
+} 

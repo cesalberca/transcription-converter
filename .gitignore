@@ -1,0 +1,19 @@
+# Deno specific
+.env
+.DS_Store
+.idea/
+.vscode/
+*.orig
+*.pyc
+*.swp
+
+# Generated files
+dist/
+node_modules/
+
+# Test files
+coverage/
+.nyc_output/
+
+# Output files from the converter
+*.txt 
