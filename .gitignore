@@ -17,3 +17,4 @@ coverage/
 
 # Output files from the converter
 *.txt 
+*.srtx

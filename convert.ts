@@ -1,5 +1,3 @@
-import { parse } from "https://deno.land/std@0.220.1/path/mod.ts";
-
 interface SubtitleEntry {
   id: number;
   timeframe: string;
@@ -78,12 +76,16 @@ async function convertSrtxToTxt(inputPath: string, outputPath: string) {
 }
 
 // Get command line arguments
-const inputFile = Deno.args[0];
-const outputFile = Deno.args[1];
+const args = Deno.args;
+const inputFile = args[0];
+const outputFile = args[1];
 
 if (!inputFile || !outputFile) {
   console.error("Usage: deno run --allow-read --allow-write convert.ts <input.srtx> <output.txt>");
   Deno.exit(1);
 }
 
-await convertSrtxToTxt(inputFile, outputFile); 
+await convertSrtxToTxt(inputFile, outputFile);
+
+// Make this file a module
+export {}; 
