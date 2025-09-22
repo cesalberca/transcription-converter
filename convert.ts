@@ -70,7 +70,9 @@ function cleanTags(tags: string): string {
 
 function mapReferralSource(menuValue: string): string {
   if (!menuValue) return '';
-  if (menuValue.includes('amigo') || menuValue.includes('recomendó')) return 'friend';
+  if (menuValue.includes('amigo')) return 'friend';
+  if (menuValue.includes('fulanito')) return 'fulanito';
+  if (menuValue.toLowerCase().includes('por instagram')) return 'instagram';
   return menuValue.toLowerCase();
 }
 
@@ -158,6 +160,9 @@ function transformMasterRow(row: MasterRow): ShopifyCustomer {
 }
 
 function transformFormRow(row: FormRow): ShopifyCustomer {
+  const referralSource = row['menu-749'] || '';
+  const instagramValue = referralSource.toLowerCase().includes('por instagram') ? 'instagram' : (row['textarea-785'] || '');
+
   return {
     'Customer ID': '', // Will be ignored as requested
     'First Name': row['text-243'] || '',
@@ -180,8 +185,8 @@ function transformFormRow(row: FormRow): ShopifyCustomer {
     'Tax Exempt': 'no',
     'Tags': 'shopify-forms-574141',
     '¿De qué ciudad eres? (customer.metafields.custom.city)': '',
-    '¿Nos dejas tu Instagram para que verifiquemos que existes? (customer.metafields.custom.instagram)': row['textarea-785'] || '',
-    '¿Cómo nos has conocido? (customer.metafields.custom.referral)': mapReferralSource(row['menu-749']),
+    '¿Nos dejas tu Instagram para que verifiquemos que existes? (customer.metafields.custom.instagram)': instagramValue,
+    '¿Cómo nos has conocido? (customer.metafields.custom.referral)': mapReferralSource(referralSource),
     'Si te ha recomendado alguien, ¿nos puedes dejar su correo? (customer.metafields.custom.referral-email)': row['email-210'] || '',
     'Fecha de nacimiento (customer.metafields.facts.birth_date)': formatBirthDate(row['date-343'])
   };
