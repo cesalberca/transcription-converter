@@ -1,6 +1,7 @@
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
 
-interface InputRow {
+// Master CSV format: Dirección de correo electrónico, Nombre, Apellidos, Dirección, TAGS
+interface MasterRow {
   'Dirección de correo electrónico'?: string;
   'Nombre'?: string;
   'Apellidos'?: string;
@@ -8,7 +9,25 @@ interface InputRow {
   'TAGS'?: string;
 }
 
+// Form CSV format: status,text-243,text-154,your-email,tel-778,date-343,menu-749,textarea-785,email-210,file-556,mc4wp_checkbox,Date
+interface FormRow {
+  status: string;
+  'text-243': string; // First Name
+  'text-154': string; // Last Name
+  'your-email': string; // Email
+  'tel-778': string; // Phone
+  'date-343': string; // Birth Date
+  'menu-749': string; // Referral source
+  'textarea-785': string; // Note/Instagram
+  'email-210': string; // Referral email
+  'file-556': string; // File upload
+  'mc4wp_checkbox': string; // Marketing consent
+  Date: string; // Form submission date
+}
+
+// Final Shopify output format
 interface ShopifyCustomer {
+  'Customer ID': string;
   'First Name': string;
   'Last Name': string;
   'Email': string;
@@ -23,44 +42,97 @@ interface ShopifyCustomer {
   'Default Address Phone': string;
   'Phone': string;
   'Accepts SMS Marketing': string;
-  'Tags': string;
+  'Total Spent': string;
+  'Total Orders': string;
   'Note': string;
   'Tax Exempt': string;
+  'Tags': string;
+  '¿De qué ciudad eres? (customer.metafields.custom.city)': string;
+  '¿Nos dejas tu Instagram para que verifiquemos que existes? (customer.metafields.custom.instagram)': string;
+  '¿Cómo nos has conocido? (customer.metafields.custom.referral)': string;
+  'Si te ha recomendado alguien, ¿nos puedes dejar su correo? (customer.metafields.custom.referral-email)': string;
+  'Fecha de nacimiento (customer.metafields.facts.birth_date)': string;
 }
 
 function parseAddress(address: string): { city: string; country: string } {
   if (!address) return { city: '', country: '' };
-
-  // Split by whitespace and get the parts
   const parts = address.trim().split(/\s+/);
   if (parts.length >= 2) {
-    const city = parts[0];
-    const country = parts[parts.length - 1];
-    return { city, country };
+    return { city: parts[0], country: parts[parts.length - 1] };
   }
-
   return { city: address, country: '' };
 }
 
 function cleanTags(tags: string): string {
   if (!tags) return '';
-
-  // Remove quotes and split by comma, then clean up
-  return tags
-    .replace(/"/g, '')
-    .split(',')
-    .map(tag => tag.trim())
-    .filter(tag => tag.length > 0)
-    .join(',');
+  return tags.replace(/"/g, '').split(',').map(tag => tag.trim()).filter(tag => tag.length > 0).join(',');
 }
 
-function transformRow(row: InputRow): ShopifyCustomer {
+function mapReferralSource(menuValue: string): string {
+  if (!menuValue) return '';
+  if (menuValue.includes('amigo') || menuValue.includes('recomendó')) return 'friend';
+  return menuValue.toLowerCase();
+}
+
+function formatBirthDate(dateStr: string): string {
+  if (!dateStr) return '';
+  try {
+    const date = new Date(dateStr);
+    return date.toISOString().split('T')[0];
+  } catch {
+    return dateStr;
+  }
+}
+
+function parseCSV(content: string): any[] {
+  const lines = content.trim().split('\n');
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split(',');
+  const rows: any[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    if (values.length >= headers.length) {
+      const row: any = {};
+      headers.forEach((header, index) => {
+        row[header] = values[index] || '';
+      });
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"' && (i === 0 || line[i-1] !== '\\')) {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function transformMasterRow(row: MasterRow): ShopifyCustomer {
   const address = parseAddress(row['Dirección'] || '');
+  const email = row['Dirección de correo electrónico'] || '';
 
   return {
+    'Customer ID': '', // Will be ignored as requested
     'First Name': row['Nombre'] || '',
     'Last Name': row['Apellidos'] || '',
-    'Email': row['Dirección de correo electrónico'] || '',
+    'Email': email,
     'Accepts Email Marketing': 'yes',
     'Default Address Company': '',
     'Default Address Address1': '',
@@ -72,53 +144,144 @@ function transformRow(row: InputRow): ShopifyCustomer {
     'Default Address Phone': '',
     'Phone': '',
     'Accepts SMS Marketing': 'yes',
-    'Tags': cleanTags(row['TAGS'] || ''),
+    'Total Spent': '0.00',
+    'Total Orders': '0',
     'Note': '',
-    'Tax Exempt': 'no'
+    'Tax Exempt': 'no',
+    'Tags': cleanTags(row['TAGS'] || '') + (cleanTags(row['TAGS'] || '') ? ',' : '') + 'onboarding',
+    '¿De qué ciudad eres? (customer.metafields.custom.city)': address.city,
+    '¿Nos dejas tu Instagram para que verifiquemos que existes? (customer.metafields.custom.instagram)': '',
+    '¿Cómo nos has conocido? (customer.metafields.custom.referral)': '',
+    'Si te ha recomendado alguien, ¿nos puedes dejar su correo? (customer.metafields.custom.referral-email)': '',
+    'Fecha de nacimiento (customer.metafields.facts.birth_date)': ''
   };
 }
 
-async function convertExcelToShopify(inputPath: string, outputPath: string) {
+function transformFormRow(row: FormRow): ShopifyCustomer {
+  return {
+    'Customer ID': '', // Will be ignored as requested
+    'First Name': row['text-243'] || '',
+    'Last Name': row['text-154'] || '',
+    'Email': row['your-email'] || '',
+    'Accepts Email Marketing': row['mc4wp_checkbox'] === 'Yes' ? 'yes' : 'no',
+    'Default Address Company': '',
+    'Default Address Address1': '',
+    'Default Address Address2': '',
+    'Default Address City': '',
+    'Default Address Province Code': '',
+    'Default Address Country Code': '',
+    'Default Address Zip': '',
+    'Default Address Phone': '',
+    'Phone': row['tel-778'] || '',
+    'Accepts SMS Marketing': row['mc4wp_checkbox'] === 'Yes' ? 'yes' : 'no',
+    'Total Spent': '0.00',
+    'Total Orders': '0',
+    'Note': row['textarea-785'] || '',
+    'Tax Exempt': 'no',
+    'Tags': 'shopify-forms-574141',
+    '¿De qué ciudad eres? (customer.metafields.custom.city)': '',
+    '¿Nos dejas tu Instagram para que verifiquemos que existes? (customer.metafields.custom.instagram)': row['textarea-785'] || '',
+    '¿Cómo nos has conocido? (customer.metafields.custom.referral)': mapReferralSource(row['menu-749']),
+    'Si te ha recomendado alguien, ¿nos puedes dejar su correo? (customer.metafields.custom.referral-email)': row['email-210'] || '',
+    'Fecha de nacimiento (customer.metafields.facts.birth_date)': formatBirthDate(row['date-343'])
+  };
+}
+
+function mergeCustomers(masterCustomers: ShopifyCustomer[], formCustomers: ShopifyCustomer[]): ShopifyCustomer[] {
+  const customerMap = new Map<string, ShopifyCustomer>();
+
+  // Add master customers first
+  masterCustomers.forEach(customer => {
+    if (customer.Email) {
+      customerMap.set(customer.Email.toLowerCase(), customer);
+    }
+  });
+
+  // Merge form data
+  formCustomers.forEach(formCustomer => {
+    const email = formCustomer.Email.toLowerCase();
+    const existing = customerMap.get(email);
+
+    if (existing) {
+      // Merge form data into existing customer
+      existing.Phone = formCustomer.Phone || existing.Phone;
+      existing.Note = formCustomer.Note || existing.Note;
+      existing['¿Nos dejas tu Instagram para que verifiquemos que existes? (customer.metafields.custom.instagram)'] =
+        formCustomer['¿Nos dejas tu Instagram para que verifiquemos que existes? (customer.metafields.custom.instagram)'] ||
+        existing['¿Nos dejas tu Instagram para que verifiquemos que existes? (customer.metafields.custom.instagram)'];
+      existing['¿Cómo nos has conocido? (customer.metafields.custom.referral)'] =
+        formCustomer['¿Cómo nos has conocido? (customer.metafields.custom.referral)'] ||
+        existing['¿Cómo nos has conocido? (customer.metafields.custom.referral)'];
+      existing['Si te ha recomendado alguien, ¿nos puedes dejar su correo? (customer.metafields.custom.referral-email)'] =
+        formCustomer['Si te ha recomendado alguien, ¿nos puedes dejar su correo? (customer.metafields.custom.referral-email)'] ||
+        existing['Si te ha recomendado alguien, ¿nos puedes dejar su correo? (customer.metafields.custom.referral-email)'];
+      existing['Fecha de nacimiento (customer.metafields.facts.birth_date)'] =
+        formCustomer['Fecha de nacimiento (customer.metafields.facts.birth_date)'] ||
+        existing['Fecha de nacimiento (customer.metafields.facts.birth_date)'];
+
+      // Merge tags
+      const existingTags = existing.Tags ? existing.Tags.split(',').map(t => t.trim()) : [];
+      const formTags = formCustomer.Tags ? formCustomer.Tags.split(',').map(t => t.trim()) : [];
+      const allTags = [...new Set([...existingTags, ...formTags])];
+      existing.Tags = allTags.join(',');
+    } else {
+      // Add new customer from form data
+      customerMap.set(email, formCustomer);
+    }
+  });
+
+  return Array.from(customerMap.values()).filter(customer => customer.Email.trim() !== '');
+}
+
+async function processFiles(masterCsvPath: string, formCsvPath: string, outputPath: string) {
   try {
-    // Read the Excel file
-    const data = await Deno.readFile(inputPath);
-    const workbook = XLSX.read(data, { type: 'buffer' });
+    // Read master CSV
+    const masterContent = await Deno.readTextFile(masterCsvPath);
+    const masterData = parseCSV(masterContent) as MasterRow[];
+    const masterCustomers = masterData.map(transformMasterRow);
 
-    // Get the first worksheet
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
+    // Read form CSV
+    const formContent = await Deno.readTextFile(formCsvPath);
+    const formData = parseCSV(formContent) as FormRow[];
+    const formCustomers = formData.map(transformFormRow);
 
-    // Convert to JSON
-    const jsonData = XLSX.utils.sheet_to_json(worksheet) as InputRow[];
+    // Merge customers
+    const mergedCustomers = mergeCustomers(masterCustomers, formCustomers);
 
-    // Transform each row
-    const shopifyData = jsonData.map(transformRow);
+    // Create Excel output
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(mergedCustomers);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Customers');
 
-    // Filter out rows without email (invalid entries)
-    const validData = shopifyData.filter(row => row.Email.trim() !== '');
-
-    // Create new workbook for output
-    const newWorkbook = XLSX.utils.book_new();
-    const newWorksheet = XLSX.utils.json_to_sheet(validData);
-    XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, 'Customers');
-
-    // Write to file
-    const outputBuffer = XLSX.write(newWorkbook, { type: 'buffer', bookType: 'xlsx' });
+    const outputBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     await Deno.writeFile(outputPath, new Uint8Array(outputBuffer));
 
-    console.log(`Successfully converted ${validData.length} customers from ${inputPath} to ${outputPath}`);
-    console.log(`Skipped ${jsonData.length - validData.length} rows without email addresses`);
+    console.log(`Successfully processed and merged ${mergedCustomers.length} customers`);
+    console.log(`Master CSV: ${masterCustomers.length} customers`);
+    console.log(`Form CSV: ${formCustomers.length} customers`);
+    console.log(`Output: ${outputPath}`);
 
   } catch (error) {
-    console.error('Error converting file:', error);
+    console.error('Error processing files:', error);
     Deno.exit(1);
   }
 }
 
 // Main execution
-const inputFile = 'input.xlsx';
-const outputFile = 'shopify_customers.xlsx';
+if (import.meta.main) {
+  const args = Deno.args;
 
-await convertExcelToShopify(inputFile, outputFile);
+  if (args.length < 2) {
+    console.log('Usage: deno run --allow-read --allow-write convert.ts <master_csv> <form_csv> [output.xlsx]');
+    console.log('  master_csv: CSV with columns "Dirección de correo electrónico", "Nombre", "Apellidos", "Dirección", "TAGS"');
+    console.log('  form_csv: CSV with contact form data');
+    console.log('  output.xlsx: Output file (optional, defaults to "merged_output.xlsx")');
+    Deno.exit(1);
+  }
 
-export {};
+  const masterCsv = args[0];
+  const formCsv = args[1];
+  const output = args[2] || 'merged_output.xlsx';
+
+  await processFiles(masterCsv, formCsv, output);
+}
