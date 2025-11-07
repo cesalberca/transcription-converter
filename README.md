@@ -21,7 +21,7 @@ cd transcription-converter
 Convert a single SRTX file to TXT:
 
 ```bash
-deno task start input.srtx output.txt
+deno task start interview.srtx output.txt
 ```
 
 Or run directly with permissions:
