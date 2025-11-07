@@ -1,7 +1,6 @@
 {
   "tasks": {
-    "start": "deno run --allow-read --allow-write convert.ts",
-    "dev": "deno run --watch --allow-read --allow-write convert.ts",
+    "convert": "deno run --allow-read --allow-write convert.ts master.csv form.csv output.xlsx",
     "test": "deno test --allow-read"
   },
   "fmt": {
@@ -21,4 +20,4 @@
     "allowJs": false,
     "lib": ["deno.window"]
   }
-} 
+}
