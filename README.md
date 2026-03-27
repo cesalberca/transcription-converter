@@ -19,13 +19,11 @@ cd transcription-converter
 ## Usage
 
 Convert a single SRTX file to TXT:
-
 ```bash
 deno task start input.srtx output.txt
 ```
 
 Or run directly with permissions:
-
 ```bash
 deno run --allow-read --allow-write convert.ts input.srtx output.txt
 ```

@@ -18,7 +18,6 @@
   },
   "compilerOptions": {
     "strict": true,
-    "allowJs": false,
     "lib": ["deno.window"]
   }
-} 
+}

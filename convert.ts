@@ -9,30 +9,45 @@ async function parseSrtxFile(filePath: string): Promise<SubtitleEntry[]> {
   const content = await Deno.readTextFile(filePath);
   const lines = content.split("\n");
   const entries: SubtitleEntry[] = [];
-  let currentEntry: Partial<SubtitleEntry> = {};
+  let currentEntry: Partial<SubtitleEntry> = {
+    id: 1,
+  };
 
   for (const line of lines) {
     const trimmedLine = line.trim();
-    
+
     if (!trimmedLine) continue;
 
-    if (/^\d+$/.test(trimmedLine)) {
-      if (Object.keys(currentEntry).length > 0) {
+    if (/^\d{2}[;:]\d{2}[;:]\d{2}[;:]\d{2}\s+-\s+\d{2}[;:]\d{2}[;:]\d{2}[;:]\d{2}$/.test(trimmedLine) || trimmedLine.includes('-->')) {
+      if (currentEntry.timeframe) {
+        if (!currentEntry.text && currentEntry.speaker) {
+          currentEntry.text = currentEntry.speaker;
+          currentEntry.speaker = '';
+        }
         entries.push(currentEntry as SubtitleEntry);
+        currentEntry = { id: entries.length + 1 };
       }
-      currentEntry = { id: parseInt(trimmedLine) };
-    } else if (trimmedLine.includes("-->")) {
       currentEntry.timeframe = trimmedLine;
+    } else if (/^\d+$/.test(trimmedLine) && !currentEntry.timeframe) {
+      currentEntry.id = parseInt(trimmedLine);
     } else {
       if (!currentEntry.speaker) {
         currentEntry.speaker = trimmedLine;
       } else {
-        currentEntry.text = trimmedLine;
+        if (!currentEntry.text) {
+          currentEntry.text = trimmedLine;
+        } else {
+          currentEntry.text += ' ' + trimmedLine;
+        }
       }
     }
   }
 
-  if (Object.keys(currentEntry).length > 0) {
+  if (currentEntry.timeframe) {
+    if (!currentEntry.text && currentEntry.speaker) {
+      currentEntry.text = currentEntry.speaker;
+      currentEntry.speaker = "";
+    }
     entries.push(currentEntry as SubtitleEntry);
   }
 
@@ -45,14 +60,15 @@ function groupBySpeaker(entries: SubtitleEntry[]): string {
   let currentText = "";
 
   for (const entry of entries) {
-    if (currentSpeaker !== entry.speaker) {
+    const entrySpeaker = entry.speaker || "Unknown";
+    if (currentSpeaker !== entrySpeaker) {
       if (currentText) {
         output += `**${currentSpeaker}**: ${currentText.trim()}\n\n`;
         currentText = "";
       }
-      currentSpeaker = entry.speaker;
+      currentSpeaker = entrySpeaker;
     }
-    currentText += entry.text + " ";
+    currentText += (entry.text || "") + " ";
   }
 
   // Add the last speaker's text
@@ -67,7 +83,7 @@ async function convertSrtxToTxt(inputPath: string, outputPath: string) {
   try {
     const entries = await parseSrtxFile(inputPath);
     const formattedOutput = groupBySpeaker(entries);
-    
+
     await Deno.writeTextFile(outputPath, formattedOutput);
     console.log(`Successfully converted ${inputPath} to ${outputPath}`);
   } catch (error) {
@@ -77,8 +93,16 @@ async function convertSrtxToTxt(inputPath: string, outputPath: string) {
 
 // Get command line arguments
 const args = Deno.args;
-const inputFile = args[0];
-const outputFile = args[1];
+let inputFile = "";
+let outputFile = "";
+
+for (let i = 0; i < args.length; i++) {
+  if (!inputFile) {
+    inputFile = args[i];
+  } else if (!outputFile) {
+    outputFile = args[i];
+  }
+}
 
 if (!inputFile || !outputFile) {
   console.error("Usage: deno run --allow-read --allow-write convert.ts <input.srtx> <output.txt>");
